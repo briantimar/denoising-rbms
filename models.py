@@ -59,8 +59,15 @@ class LocalNoiseRBM:
             noise_condition: if not None, (N, num_visible tensor) of noisy
             register values.
             """
-        
-        return tf.sigmoid( self.visible_bias + tf.matmul(self.weights, hidden))
+        # standard RBM formula based for the energy, given hiddens
+        energy = self.visible_bias + tf.matmul(self.weights, hidden)
+        if noise_condition is not None:
+            # if we're conditioning on the noisy state, energy needs to be modified.
+            energy += tf.math.softplus(self.noise_bias)
+                        - tf.math.softplus(self.noise_bias + self.noise_kernel)
+                        + self.noise_kernel * noise_condition
+        return tf.sigmoid(energy)
+
 
     def compute_hidden_probs(self, visible, weights, hidden_bias):
         """ Given tensor of visible activations and couplings, return activation
