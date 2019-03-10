@@ -1,5 +1,6 @@
 
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 class adict(dict):
 
@@ -26,32 +27,30 @@ class LocalNoiseRBM:
         self.num_hidden = num_hidden
 
         self.dtype=tf.float32
-        self.visible_bias = tf.get_variable("visible_bias",
+        self.visible_bias = tf.expand_dims( tf.get_variable("visible_bias",
                                             shape=(self.num_visible, 1),
                                             dtype=self.dtype,
-                                            initializer=bias_initializer)
-        self.hidden_bias = tf.get_variable("hidden_bias",
+                                            initializer=bias_initializer), 0)
+
+        self.hidden_bias = tf.expand_dims( tf.get_variable("hidden_bias",
                                         shape=(self.num_hidden, 1),
                                         dtype=self.dtype,
-                                        initializer=bias_initializer)
-        self.weights = tf.get_variable("weights",
+                                        initializer=bias_initializer), 0)
+
+        self.weights = tf.expand_dims( tf.get_variable("weights",
                                 shape= (self.num_visible, self.num_hidden),
                                 dtype=self.dtype,
-                                initializer=kernel_initializer)
+                                initializer=kernel_initializer), 0)
 
         self.noise_kernel =  tf.get_variable("noise_kernel",
-
                                     dtype=self.dtype,
                                     initializer=2 * alpha * tf.ones(())
                                     )
 
-
         self.noise_bias =   tf.get_variable("noise_bias",
-
                                             dtype=self.dtype,
                                             initializer= - alpha * tf.ones(())
                                             )
-
 
 
         self.variables = dict(visible_bias=self.visible_bias,
@@ -59,6 +58,7 @@ class LocalNoiseRBM:
                             weights = self.weights,
                             noise_kernel = self.noise_kernel,
                             noise_bias = self.noise_bias)
+
 
     def compute_noisy_probs(self, visible):
         """ Compute the probability of excitation in the noisy register,
@@ -81,12 +81,13 @@ class LocalNoiseRBM:
         return tf.sigmoid(energy)
 
 
-    def compute_hidden_probs(self, visible, weights, hidden_bias):
+    def compute_hidden_probs(self, visible):
         """ Given tensor of visible activations and couplings, return activation
         probabilities for hidden layer.
-        weights: (N, num_visible, num_hidden)
-        hidden_bias: (N, num_hidden,1)"""
-        return tf.sigmoid( hidden_bias + tf.matmul(tf.transpose(weights, perm=[0, 2,1]), visible))
+
+        """
+        return tf.sigmoid( self.hidden_bias +
+            tf.matmul(tf.transpose(self.weights,perm=[0,2,1]), visible))
 
     def build_gibbs_chain(self, visible_init,
                              k,
@@ -112,15 +113,15 @@ class LocalNoiseRBM:
             raise ValueError("k must be nonnegative int")
         with tf.name_scope("gibbs_sampling_%d"%k):
             v=visible_init
-            ph0 = self.compute_hidden_probs(v, weights, hidden_bias)
+            ph0 = self.compute_hidden_probs(v)
             ph=ph0
             for step in range(k):
                 with tf.name_scope("step_%d"%step):
                     h = tfp.distributions.Bernoulli(probs=ph,dtype=self.dtype).sample()
-                    pv = self.compute_visible_probs(h, weights, visible_bias,
-                                                    noise_setting=noise_setting)
+                    pv = self.compute_visible_probs(h,
+                                                    noise_condition=noise_setting)
                     v = tfp.distributions.Bernoulli(probs=pv,dtype=self.dtype).sample()
-                    ph = self.compute_hidden_probs(v, weights, hidden_bias)
+                    ph = self.compute_hidden_probs(v)
             return v, ph, ph0
 
     def free_energy_gradients(self, v, ph):
@@ -164,7 +165,7 @@ class LocalNoiseRBM:
         pos_grads = self.free_energy_gradients(v_data, ph_data)
         neg_grads = self.free_energy_gradients(v_self, ph_self)
         conditional_grads = self.log_conditional_prob_gradients(v_data,
-                                                            noisy_data)
+                                                            noisy_state)
         grads = adict()
         for key in pos_grads.keys():
             grads[key] = pos_grads[key] - neg_grads[key]
