@@ -88,7 +88,7 @@ class LocalNoiseRBM:
 
     def build_gibbs_chain(self, visible_init,
                              k,
-                             noise_condition=True):
+                             noise_condition=False):
         """ Build a chain for k steps of Gibbs sampling.
             visible_init = (N, num_visible) tensor of initial visible states
             k = int, number of Gibbs sampling steps.
@@ -143,38 +143,35 @@ class LocalNoiseRBM:
         grads.noise_kernel = visible * (noisy-pnoisy)
         return grads
 
-    def internal_gradients(self, v_data, ph_data,
-                                v_self, ph_self):
+    def log_probability_gradients(self, v_data, ph_data,
+                                    v_self, ph_self,
+                                    noisy_state):
         """ Compute cost function gradients with respect to internal parameters.
         v_data, ph_data: visible state and corresponding hidden excitation probability
         computed from data.
+            (note: if noise_conditioning, these are the outputs of the data-driven
+            Gibbs chain; in other words, samples from the visible layer distribution,
+            given the data))
         v_self, ph_self: same, but sampled from model distribution.
-        all tensors should agree in first dimension.
+        noisy_state: the state of the noisy layer (
+                v_data will have been obtained from this state by Gibbs sampling)
 
+        all tensors should agree in first dimension.
         returns: adict of gradient values."""
 
         pos_grads = self.free_energy_gradients(v_data, ph_data)
         neg_grads = self.free_energy_gradients(v_self, ph_self)
+        conditional_grads = self.log_conditional_prob_gradients(v_data,
+                                                            noisy_data)
         grads = adict()
         for key in pos_grads.keys():
             grads[key] = pos_grads[key] - neg_grads[key]
+        for key in conditional_grads.keys():
+            grads[key] = conditional_grads[key]
         return grads
 
-    def get_external_variables(internal_varname):
-        """ Return all external trainable variables associated with a
-        given internal variable name"""
-        return self.internal_variable_models[internal_varname].variables
-
-    def effective_cost_function(self, internal_grads, internal_vars):
-        """ Given internal gradients estimated from Gibbs sampling, return
-        an effective cost function whose gradients can be used to optimize
-        the external variables.
-            internal_grads: adict holding estimates of the internal gradients
-            internal_vars: adict holding corresponding values of the internal vars"""
-        return sum( [ tf.reduce_sum(tf.stop_gradient(internal_grads[k]) * internal_vars[k])
-                        for k in internal_grads.keys() ])
-
-    def build_sampler(self, visible_feed, cond_feed, k):
+    def build_sampler(self, visible_feed, cond_feed, k
+                            ):
         """ Return a tensor which produces samples from the visible layer
         using k steps of Gibbs sampling.
 
@@ -186,37 +183,57 @@ class LocalNoiseRBM:
         if len(visible_feed.shape)!=3:
             visible_feed = tf.expand_dims(visible_feed, 2)
 
-        internal_vars = adict()
-        # compute the values of the internal variables.
-        for key in self.internal_var_keys:
-            internal_vars[key] = self.internal_variable_models[key](cond_feed)
-        #
         # obtain visible states by Gibbs sampling
         v_data = visible_feed
-        v_self, ph_self, ph_data = self.build_gibbs_chain(v_data, internal_vars, k)
+        v_self, ph_self, ph_data = self.build_gibbs_chain(v_data, k,
+                                                        noise_condition=False)
         return v_self
 
-
-    def build_training_graph(self, visible_feed, cond_feed, k):
-        """ Build a graph for training the RBM using k steps of Gibbs sampling
+    def estimate_logprob_grads(self, visible_feed, k,
+                                    noise_condition=True):
+        """ Build a graph for estimating gradients of RBM parameters
+            using k steps of Gibbs sampling
             visible_feed: (N, num_visible, 1) tensor of visible samples from data
             cond_feed: (N, ?) tensor of conditioning variables.
-            k: int, number of Gibbs sampling steps."""
+            k: int, number of Gibbs sampling steps.
+            noise_condition: whether or not to treat visible samples as noisy
+            returns: adict of gradients of the log-probability of the data,
+            averaged over samples."""
 
         if len(visible_feed.shape)!=3:
             visible_feed = tf.expand_dims(visible_feed, 2)
 
-        internal_vars = adict()
-        # compute the values of the internal variables.
-        for key in self.internal_var_keys:
-            internal_vars[key] = self.internal_variable_models[key](cond_feed)
-        #
-        # obtain visible states by Gibbs sampling
-        v_data = visible_feed
-        v_self, ph_self, ph_data = self.build_gibbs_chain(v_data, internal_vars, k)
+        #if conditioning on noise layer, need to run sampling to infer visible
+        # states
+        if noise_condition:
+            v_data, ph_data, __ = self.build_gibbs_chain(visible_feed, k,
+                                                noise_condition=True)
+            v_self, ph_self, __ = self.build_gibbs_chain(visible_feed, k,
+                                                noise_condition=False)
+        ### otherwise, visible states are driven directly from data
+        else:
+            v_data = visible_feed
+            v_self, ph_self, ph_data = self.build_gibbs_chain(visible_feed, k,
+                                                        noise_condition=False)
+        noisy_state = visible_feed
+
         #compute the internal gradients
-        internal_grads = self.internal_gradients(v_data, ph_data,
-                                                v_self, ph_self)
-        #yo, minimize this thing
-        J = self.effective_cost_function(internal_grads, internal_vars)
-        return J
+        grads = self.log_probability_gradients(v_data, ph_data,
+                                                v_self, ph_self, noisy_state)
+        # average over examples in batch
+        for key in grads.keys():
+            grads[key] = tf.reduce_mean(grads[key], axis=0)
+        return grads
+
+    def nll_gradients(self, visible_feed, k, noise_condition=True):
+        """ Returns list of (variable, gradient) pairs, where
+            variables are the trainable params of the rbm, and
+            gradients are the gradients of the negative-log-likelihood cost
+            function with respect to the paired variables.
+            """
+        logprob_grads = self.estimate_logprob_grads(visible_feed, k,
+                                            noise_condition=noise_condition)
+        gradlist = []
+        for varname in self.variables.keys():
+            gradlist += (self.variables[varname], -logprob_grads[varname])
+        return gradlist
