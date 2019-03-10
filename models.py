@@ -1,4 +1,6 @@
 
+import tensorflow as tf
+
 class adict(dict):
 
     def __init__(self, **items):
@@ -13,8 +15,8 @@ class LocalNoiseRBM:
     """ RBM which allows for independent, spatially uniform noise processes."""
 
     def __init__(self, num_visible, num_hidden,
-                                    kernel_initializer='glorot_normal',
-                                    bias_initializer='zeroes'
+                                    kernel_initializer=tf.initializers.glorot_normal,
+                                    bias_initializer=tf.initializers.zeros,
                                         alpha=2):
         """num_visible = number of visible units
             num_hidden = number of hidden units
@@ -37,19 +39,19 @@ class LocalNoiseRBM:
                                 dtype=self.dtype,
                                 initializer=kernel_initializer)
 
-        self.noise_kernel = tf.tile( tf.get_variable("noise_kernel",
-                                    shape = (1,),
-                                    dtype=self.dtype,
-                                    initializer=2 * alpha * tf.ones((1,))
-                                    ),
-                                    [1, self.num_visible])
+        self.noise_kernel =  tf.get_variable("noise_kernel",
 
-        self.noise_bias =   tf.tile(   tf.get_variable("noise_bias",
-                                            shape = (1,1),
+                                    dtype=self.dtype,
+                                    initializer=2 * alpha * tf.ones(())
+                                    )
+
+
+        self.noise_bias =   tf.get_variable("noise_bias",
+
                                             dtype=self.dtype,
-                                            initializer= - alpha * tf.ones((1,1))
-                                            ),
-                                            [1, self.num_visible])
+                                            initializer= - alpha * tf.ones(())
+                                            )
+
 
 
         self.variables = dict(visible_bias=self.visible_bias,
@@ -73,9 +75,9 @@ class LocalNoiseRBM:
         energy = self.visible_bias + tf.matmul(self.weights, hidden)
         if noise_condition is not None:
             # if we're conditioning on the noisy state, energy needs to be modified.
-            energy += tf.math.softplus(self.noise_bias)
+            energy += (tf.math.softplus(self.noise_bias)
                         - tf.math.softplus(self.noise_bias + self.noise_kernel)
-                        + self.noise_kernel * noise_condition
+                        + self.noise_kernel * noise_condition)
         return tf.sigmoid(energy)
 
 
