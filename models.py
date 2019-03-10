@@ -1,4 +1,14 @@
 
+class adict(dict):
+
+    def __init__(self, **items):
+        super(adict, self).__init__(**items)
+    def __getattr__(self, attr):
+        return self[attr]
+    def __setattr__(self, attr, val):
+        self[attr] = val
+
+
 class LocalNoiseRBM:
     """ RBM which allows for independent, spatially uniform noise processes."""
 
@@ -121,6 +131,16 @@ class LocalNoiseRBM:
         grads.visible_bias = -v
         grads.hidden_bias = -ph
         grads.weights = -v * tf.transpose(ph, perm=(0,2,1))
+        return grads
+
+    def log_conditional_prob_gradients(self, visible, noisy):
+        """ Compute gradients of the log conditional probs of noisy state values,
+        given visibles """
+        #prob of noisy activation, given hiddens
+        pnoisy = self.compute_noisy_probs(visible)
+        grads = adict()
+        grads.noise_bias = noisy - pnoisy
+        grads.noise_kernel = visible * (noisy-pnoisy)
         return grads
 
     def internal_gradients(self, v_data, ph_data,
