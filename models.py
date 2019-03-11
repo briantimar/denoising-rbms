@@ -27,20 +27,20 @@ class LocalNoiseRBM:
         self.num_hidden = num_hidden
 
         self.dtype=tf.float32
-        self.visible_bias = tf.expand_dims( tf.get_variable("visible_bias",
+        self.visible_bias = tf.get_variable("visible_bias",
                                             shape=(self.num_visible, 1),
                                             dtype=self.dtype,
-                                            initializer=bias_initializer), 0)
+                                            initializer=bias_initializer)
 
-        self.hidden_bias = tf.expand_dims( tf.get_variable("hidden_bias",
+        self.hidden_bias = tf.get_variable("hidden_bias",
                                         shape=(self.num_hidden, 1),
                                         dtype=self.dtype,
-                                        initializer=bias_initializer), 0)
+                                        initializer=bias_initializer)
 
-        self.weights = tf.expand_dims( tf.get_variable("weights",
+        self.weights =   tf.get_variable("weights",
                                 shape= (self.num_visible, self.num_hidden),
                                 dtype=self.dtype,
-                                initializer=kernel_initializer), 0)
+                                initializer=kernel_initializer)
 
         self.noise_kernel =  tf.get_variable("noise_kernel",
                                     dtype=self.dtype,
@@ -65,14 +65,15 @@ class LocalNoiseRBM:
         for a given visible setting """
         return tf.sigmoid(self.noise_kernel * visible + self.noise_bias)
 
-    def compute_visible_probs(self, hidden, noise_condition=None):
+    def compute_visible_probs(self, hidden, weights, visible_bias,
+                        noise_condition=None):
         """ Given a hidden tensor, return the excitation probabilities for the
         visible layer.
             noise_condition: if not None, (N, num_visible tensor) of noisy
             register values.
             """
         # standard RBM formula based for the energy, given hiddens
-        energy = self.visible_bias + tf.matmul(self.weights, hidden)
+        energy = visible_bias + tf.matmul(weights, hidden)
         if noise_condition is not None:
             # if we're conditioning on the noisy state, energy needs to be modified.
             energy += (tf.math.softplus(self.noise_bias)
@@ -81,13 +82,14 @@ class LocalNoiseRBM:
         return tf.sigmoid(energy)
 
 
-    def compute_hidden_probs(self, visible):
+    def compute_hidden_probs(self, visible, weights, hidden_bias):
         """ Given tensor of visible activations and couplings, return activation
         probabilities for hidden layer.
 
         """
-        return tf.sigmoid( self.hidden_bias +
-            tf.matmul(tf.transpose(self.weights,perm=[0,2,1]), visible))
+
+        return tf.sigmoid( hidden_bias +
+            tf.matmul(tf.transpose(weights,perm=[0,2,1]), visible))
 
     def build_gibbs_chain(self, visible_init,
                              k,
@@ -104,24 +106,31 @@ class LocalNoiseRBM:
              ph0: (N, num_hidden,1) tensor of hidden probs conditioned on visible_init.
             """
 
-        weights = self.weights
-        hidden_bias = self.hidden_bias
-        visible_bias = self.visible_bias
+
+        batch_size = tf.shape(visible_init)[0]
+
+        weights = tf.expand_dims(self.weights, 0)
+        hidden_bias = tf.expand_dims(self.hidden_bias, 0)
+        visible_bias = tf.expand_dims(self.visible_bias, 0)
+
+        weights = tf.tile(weights, [batch_size, 1, 1])
+        hidden_bias = tf.tile(hidden_bias, [batch_size, 1, 1])
+        visible_bias = tf.tile(visible_bias, [batch_size, 1,1])
 
         noise_setting = visible_init if noise_condition else None
         if k <0:
             raise ValueError("k must be nonnegative int")
         with tf.name_scope("gibbs_sampling_%d"%k):
             v=visible_init
-            ph0 = self.compute_hidden_probs(v)
+            ph0 = self.compute_hidden_probs(v, weights, hidden_bias)
             ph=ph0
             for step in range(k):
                 with tf.name_scope("step_%d"%step):
                     h = tfp.distributions.Bernoulli(probs=ph,dtype=self.dtype).sample()
-                    pv = self.compute_visible_probs(h,
+                    pv = self.compute_visible_probs(h, weights, visible_bias,
                                                     noise_condition=noise_setting)
                     v = tfp.distributions.Bernoulli(probs=pv,dtype=self.dtype).sample()
-                    ph = self.compute_hidden_probs(v)
+                    ph = self.compute_hidden_probs(v, weights, hidden_bias)
             return v, ph, ph0
 
     def free_energy_gradients(self, v, ph):
@@ -138,12 +147,13 @@ class LocalNoiseRBM:
 
     def log_conditional_prob_gradients(self, visible, noisy):
         """ Compute gradients of the log conditional probs of noisy state values,
-        given visibles """
+        given visibles
+        Inputs should have shape (batch_size, nv, 1) """
         #prob of noisy activation, given hiddens
         pnoisy = self.compute_noisy_probs(visible)
         grads = adict()
-        grads.noise_bias = noisy - pnoisy
-        grads.noise_kernel = visible * (noisy-pnoisy)
+        grads.noise_bias = tf.reduce_sum(noisy - pnoisy, axis=1)
+        grads.noise_kernel = tf.reduce_sum(visible * (noisy-pnoisy), axis=1)
         return grads
 
     def log_probability_gradients(self, v_data, ph_data,
@@ -173,7 +183,7 @@ class LocalNoiseRBM:
             grads[key] = conditional_grads[key]
         return grads
 
-    def build_sampler(self, visible_feed, cond_feed, k
+    def build_sampler(self, visible_feed,  k
                             ):
         """ Return a tensor which produces samples from the visible layer
         using k steps of Gibbs sampling.
@@ -226,10 +236,12 @@ class LocalNoiseRBM:
         # average over examples in batch
         for key in grads.keys():
             grads[key] = tf.reduce_mean(grads[key], axis=0)
+        grads.noise_kernel = tf.squeeze(grads.noise_kernel)
+        grads.noise_bias = tf.squeeze(grads.noise_bias)
         return grads
 
     def nll_gradients(self, visible_feed, k, noise_condition=True):
-        """ Returns list of (variable, gradient) pairs, where
+        """ Returns list of ( gradient, variable) pairs, where
             variables are the trainable params of the rbm, and
             gradients are the gradients of the negative-log-likelihood cost
             function with respect to the paired variables.
@@ -238,5 +250,5 @@ class LocalNoiseRBM:
                                             noise_condition=noise_condition)
         gradlist = []
         for varname in self.variables.keys():
-            gradlist += (self.variables[varname], -logprob_grads[varname])
+            gradlist += [(-logprob_grads[varname], self.variables[varname])]
         return gradlist
