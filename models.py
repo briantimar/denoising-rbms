@@ -11,9 +11,10 @@ class adict(dict):
     def __setattr__(self, attr, val):
         self[attr] = val
 
-
 class LocalNoiseRBM:
     """ RBM which allows for independent, spatially uniform noise processes."""
+
+    count = 0
 
     def __init__(self, num_visible, num_hidden,
                                     kernel_initializer=tf.initializers.glorot_normal,
@@ -26,38 +27,46 @@ class LocalNoiseRBM:
         self.num_visible = num_visible
         self.num_hidden = num_hidden
 
+
         self.dtype=tf.float32
-        self.visible_bias = tf.get_variable("visible_bias",
-                                            shape=(self.num_visible, 1),
+
+        while True:
+
+          try:
+            self.visible_bias = tf.get_variable("visible_bias%d"%LocalNoiseRBM.count,
+                                                shape=(self.num_visible, 1),
+                                                dtype=self.dtype,
+                                                initializer=bias_initializer)
+
+            self.hidden_bias = tf.get_variable("hidden_bias%d"%LocalNoiseRBM.count,
+                                            shape=(self.num_hidden, 1),
                                             dtype=self.dtype,
                                             initializer=bias_initializer)
 
-        self.hidden_bias = tf.get_variable("hidden_bias",
-                                        shape=(self.num_hidden, 1),
-                                        dtype=self.dtype,
-                                        initializer=bias_initializer)
-
-        self.weights =   tf.get_variable("weights",
-                                shape= (self.num_visible, self.num_hidden),
-                                dtype=self.dtype,
-                                initializer=kernel_initializer)
-
-        self.noise_kernel =  tf.get_variable("noise_kernel",
+            self.weights =   tf.get_variable("weights%d"%LocalNoiseRBM.count,
+                                    shape= (self.num_visible, self.num_hidden),
                                     dtype=self.dtype,
-                                    initializer=2 * alpha * tf.ones(())
-                                    )
+                                    initializer=kernel_initializer)
 
-        self.noise_bias =   tf.get_variable("noise_bias",
-                                            dtype=self.dtype,
-                                            initializer= - alpha * tf.ones(())
-                                            )
+            self.noise_kernel =  tf.get_variable("noise_kernel%d"%LocalNoiseRBM.count,
+                                        dtype=self.dtype,
+                                        initializer=2 * alpha * tf.ones(())
+                                        )
+
+            self.noise_bias =   tf.get_variable("noise_bias%d"%LocalNoiseRBM.count,
+                                                dtype=self.dtype,
+                                                initializer= - alpha * tf.ones(())
+                                                )
 
 
-        self.variables = dict(visible_bias=self.visible_bias,
-                            hidden_bias = self.hidden_bias,
-                            weights = self.weights,
-                            noise_kernel = self.noise_kernel,
-                            noise_bias = self.noise_bias)
+            self.variables = dict(visible_bias=self.visible_bias,
+                                hidden_bias = self.hidden_bias,
+                                weights = self.weights,
+                                noise_kernel = self.noise_kernel,
+                                noise_bias = self.noise_bias)
+            break
+          except ValueError:
+            LocalNoiseRBM.count += 1
 
 
     def compute_noisy_probs(self, visible):
@@ -107,6 +116,7 @@ class LocalNoiseRBM:
             """
 
 
+        ### I'm repeating myself, there's a better way to do this...
         batch_size = tf.shape(visible_init)[0]
 
         weights = tf.expand_dims(self.weights, 0)
@@ -202,33 +212,41 @@ class LocalNoiseRBM:
                                                         noise_condition=False)
         return v_self
 
-    def estimate_logprob_grads(self, visible_feed, k,
-                                    noise_condition=True):
+    def estimate_logprob_grads(self, data_feed, k,
+                                    noise_condition=True,
+                                    persistent_state=None):
         """ Build a graph for estimating gradients of RBM parameters
             using k steps of Gibbs sampling
-            visible_feed: (N, num_visible, 1) tensor of visible samples from data
+            data_feed: (N, num_visible, 1) tensor of visible samples from data
             cond_feed: (N, ?) tensor of conditioning variables.
             k: int, number of Gibbs sampling steps.
             noise_condition: whether or not to treat visible samples as noisy
             returns: adict of gradients of the log-probability of the data,
-            averaged over samples."""
+            averaged over samples.
+            persistent_state: if not None, tensor of persistent
+            'fantasy' visible states to use for seeding the negative phase
 
-        if len(visible_feed.shape)!=3:
-            visible_feed = tf.expand_dims(visible_feed, 2)
+            returns: grads, persistent_state"""
+
+        if len(data_feed.shape)!=3:
+            data_feed = tf.expand_dims(data_feed, 2)
+
+        #what to use to seed the gibbs chains for the negative phase
+        self_seed = data_feed if persistent_state is None else persistent_state
 
         #if conditioning on noise layer, need to run sampling to infer visible
         # states
         if noise_condition:
-            v_data, ph_data, __ = self.build_gibbs_chain(visible_feed, k,
+            v_data, ph_data, __ = self.build_gibbs_chain(data_feed, k,
                                                 noise_condition=True)
-            v_self, ph_self, __ = self.build_gibbs_chain(visible_feed, k,
+            v_self, ph_self, __ = self.build_gibbs_chain(self_seed, k,
                                                 noise_condition=False)
         ### otherwise, visible states are driven directly from data
         else:
-            v_data = visible_feed
-            v_self, ph_self, ph_data = self.build_gibbs_chain(visible_feed, k,
+            v_data = data_feed
+            v_self, ph_self, ph_data = self.build_gibbs_chain(self_seed, k,
                                                         noise_condition=False)
-        noisy_state = visible_feed
+        noisy_state = data_feed
 
         #compute the internal gradients
         grads = self.log_probability_gradients(v_data, ph_data,
@@ -238,17 +256,26 @@ class LocalNoiseRBM:
             grads[key] = tf.reduce_mean(grads[key], axis=0)
         grads.noise_kernel = tf.squeeze(grads.noise_kernel)
         grads.noise_bias = tf.squeeze(grads.noise_bias)
-        return grads
 
-    def nll_gradients(self, visible_feed, k, noise_condition=True):
+        #if applicable, return new persistent state
+        return grads, v_self
+
+    def nll_gradients(self, data_feed, k, noise_condition=True,
+                                          persistent_state=None):
         """ Returns list of ( gradient, variable) pairs, where
             variables are the trainable params of the rbm, and
             gradients are the gradients of the negative-log-likelihood cost
             function with respect to the paired variables.
+
+            persisitent_state: if not None, a tensor of visible-states used
+            to seed the self-phase chain
+
             """
-        logprob_grads = self.estimate_logprob_grads(visible_feed, k,
-                                            noise_condition=noise_condition)
+
+        logprob_grads, new_persistent_state = self.estimate_logprob_grads(data_feed, k,
+                                            noise_condition=noise_condition,
+                                            persistent_state=persistent_state)
         gradlist = []
         for varname in self.variables.keys():
             gradlist += [(-logprob_grads[varname], self.variables[varname])]
-        return gradlist
+        return gradlist, new_persistent_state
