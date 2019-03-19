@@ -169,7 +169,7 @@ class LocalNoiseRBM:
     def log_probability_gradients(self, v_data, ph_data,
                                     v_self, ph_self,
                                     noisy_state):
-        """ Compute cost function gradients with respect to internal parameters.
+        """ Compute log prob gradients with respect to internal parameters.
         v_data, ph_data: visible state and corresponding hidden excitation probability
         computed from data.
             (note: if noise_conditioning, these are the outputs of the data-driven
@@ -182,13 +182,13 @@ class LocalNoiseRBM:
         all tensors should agree in first dimension.
         returns: adict of gradient values."""
 
-        pos_grads = self.free_energy_gradients(v_data, ph_data)
-        neg_grads = self.free_energy_gradients(v_self, ph_self)
+        data_grads = self.free_energy_gradients(v_data, ph_data)
+        self_grads = self.free_energy_gradients(v_self, ph_self)
         conditional_grads = self.log_conditional_prob_gradients(v_data,
                                                             noisy_state)
         grads = adict()
-        for key in pos_grads.keys():
-            grads[key] = pos_grads[key] - neg_grads[key]
+        for key in data_grads.keys():
+            grads[key] = self_grads[key] - data_grads[key]
         for key in conditional_grads.keys():
             grads[key] = conditional_grads[key]
         return grads
@@ -215,7 +215,8 @@ class LocalNoiseRBM:
     def estimate_logprob_grads(self, data_feed, k,
                                     noise_condition=True,
                                     persistent_state=None):
-        """ Build a graph for estimating gradients of RBM parameters
+        """ Build a graph for estimating gradients of log-probabability
+        with respect to RBM parameters
             using k steps of Gibbs sampling
             data_feed: (N, num_visible, 1) tensor of visible samples from data
             cond_feed: (N, ?) tensor of conditioning variables.
@@ -279,7 +280,7 @@ class LocalNoiseRBM:
                                             persistent_state=persistent_state)
 
         #add weight decay term by hand:
-        logprob_grads['weights'] -= weight_decay* tf.reduce_sum(self.weights**2)
+        logprob_grads['weights'] -= 2 * weight_decay * self.weights
         gradlist = []
         for varname in self.variables.keys():
             gradlist += [(-logprob_grads[varname], self.variables[varname])]

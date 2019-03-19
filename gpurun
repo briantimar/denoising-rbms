@@ -3,4 +3,4 @@
 
 docker run --rm -it \
 -v $PWD:/tmp -w /tmp \
---runtime=nvidia tensorflow/tensorflow:latest-gpu-py3 $@
+--runtime=nvidia tensorflow/tensorflow:1.13.1-gpu-py3 $@
