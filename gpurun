@@ -1,0 +1,6 @@
+#!/bin/bash
+# run python scripts through tf-gpu docker image.
+
+docker run --rm -it \
+-v $PWD:/tmp -w /tmp \
+--runtime=nvidia tensorflow/tensorflow:latest-gpu-py3 $@

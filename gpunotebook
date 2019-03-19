@@ -1,0 +1,7 @@
+#!/bin/bash
+# start jupyter notebook with tf-gpu in the current directory
+
+docker run --rm -it \
+-v $PWD:/tf/notebooks \
+-p 8888:8888 \
+--runtime=nvidia tensorflow/tensorflow:latest-gpu-py3-jupyter 
