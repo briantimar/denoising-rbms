@@ -260,7 +260,9 @@ class LocalNoiseRBM:
         #if applicable, return new persistent state
         return grads, v_self
 
-    def nll_gradients(self, data_feed, k, noise_condition=True,
+    def nll_gradients(self, data_feed, k,
+                                            weight_decay = 0.0,
+                                            noise_condition=True,
                                           persistent_state=None):
         """ Returns list of ( gradient, variable) pairs, where
             variables are the trainable params of the rbm, and
@@ -275,6 +277,9 @@ class LocalNoiseRBM:
         logprob_grads, new_persistent_state = self.estimate_logprob_grads(data_feed, k,
                                             noise_condition=noise_condition,
                                             persistent_state=persistent_state)
+
+        #add weight decay term by hand:
+        logprob_grads['weights'] -= weight_decay* tf.reduce_sum(self.weights**2)
         gradlist = []
         for varname in self.variables.keys():
             gradlist += [(-logprob_grads[varname], self.variables[varname])]
