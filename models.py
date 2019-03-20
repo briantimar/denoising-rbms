@@ -88,8 +88,10 @@ class LocalNoiseRBM:
             """
         if len(hidden.shape)==3:
             batch_size = tf.shape(hidden)[0]
-            weights = expand_and_tile(weights, batch_size)
-            visible_bias = expand_and_tile(visible_bias, batch_size)
+            if len(weights.shape)<3:
+                weights = expand_and_tile(weights, batch_size)
+            if len(visible_bias.shape)<3:
+                visible_bias = expand_and_tile(visible_bias, batch_size)
 
         # standard RBM formula based for the energy, given hiddens
         energy = visible_bias + tf.matmul(weights, hidden)
@@ -108,8 +110,10 @@ class LocalNoiseRBM:
         """
         if len(visible.shape)==3:
             batch_size = tf.shape(visible)[0]
-            weights = expand_and_tile(weights, batch_size)
-            hidden_bias = expand_and_tile(hidden_bias, batch_size)
+            if len(weights.shape)<3:
+                weights = expand_and_tile(weights, batch_size)
+            if len(hidden_bias.shape)<3:
+                hidden_bias = expand_and_tile(hidden_bias, batch_size)
         return tf.sigmoid( hidden_bias +
             tf.matmul(tf.transpose(weights,perm=[0,2,1]), visible))
 
@@ -256,7 +260,7 @@ class LocalNoiseRBM:
             v_data = data_feed
             ## make sure to get the hidden probs conditioned on the data
             ph_data = self.compute_hidden_probs(v_data, self.weights, self.hidden_bias)
-            v_self, ph_self, ph_data = self.build_gibbs_chain(self_seed, k,
+            v_self, ph_self, __ = self.build_gibbs_chain(self_seed, k,
                                                         noise_condition=False)
         noisy_state = data_feed
 
