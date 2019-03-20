@@ -11,6 +11,11 @@ class adict(dict):
     def __setattr__(self, attr, val):
         self[attr] = val
 
+def expand_and_tile(x, batch_size):
+    """add a zeroth dimension and tile to match batch size"""
+    x = tf.expand_dims(x, 0)
+    return tf.tile(x, [batch_size, 1, 1])
+
 class LocalNoiseRBM:
     """ RBM which allows for independent, spatially uniform noise processes."""
 
@@ -81,6 +86,11 @@ class LocalNoiseRBM:
             noise_condition: if not None, (N, num_visible tensor) of noisy
             register values.
             """
+        if len(hidden.shape)==3:
+            batch_size = tf.shape(hidden)[0]
+            weights = expand_and_tile(weights, batch_size)
+            visible_bias = expand_and_tile(visible_bias, batch_size)
+
         # standard RBM formula based for the energy, given hiddens
         energy = visible_bias + tf.matmul(weights, hidden)
         if noise_condition is not None:
@@ -96,7 +106,10 @@ class LocalNoiseRBM:
         probabilities for hidden layer.
 
         """
-
+        if len(visible.shape)==3:
+            batch_size = tf.shape(visible)[0]
+            weights = expand_and_tile(weights, batch_size)
+            hidden_bias = expand_and_tile(hidden_bias, batch_size)
         return tf.sigmoid( hidden_bias +
             tf.matmul(tf.transpose(weights,perm=[0,2,1]), visible))
 
@@ -119,13 +132,9 @@ class LocalNoiseRBM:
         ### I'm repeating myself, there's a better way to do this...
         batch_size = tf.shape(visible_init)[0]
 
-        weights = tf.expand_dims(self.weights, 0)
-        hidden_bias = tf.expand_dims(self.hidden_bias, 0)
-        visible_bias = tf.expand_dims(self.visible_bias, 0)
-
-        weights = tf.tile(weights, [batch_size, 1, 1])
-        hidden_bias = tf.tile(hidden_bias, [batch_size, 1, 1])
-        visible_bias = tf.tile(visible_bias, [batch_size, 1,1])
+        weights = expand_and_tile(self.weights, batch_size)
+        hidden_bias = expand_and_tile(self.hidden_bias, batch_size)
+        visible_bias = expand_and_tile(self.visible_bias, batch_size)
 
         noise_setting = visible_init if noise_condition else None
         if k <0:
@@ -245,6 +254,8 @@ class LocalNoiseRBM:
         ### otherwise, visible states are driven directly from data
         else:
             v_data = data_feed
+            ## make sure to get the hidden probs conditioned on the data
+            ph_data = self.compute_hidden_probs(v_data, self.weights, self.hidden_bias)
             v_self, ph_self, ph_data = self.build_gibbs_chain(self_seed, k,
                                                         noise_condition=False)
         noisy_state = data_feed
