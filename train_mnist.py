@@ -4,10 +4,11 @@ import numpy as np
 from models import LocalNoiseRBM
 
 def train_mnist(rbm, optimizer,
-                k=1,
+                k=1,ksample=50,
                 shuffle=1024,
                 batch_size=64,
                 epochs=20,
+                sample_step=500,
                 weight_decay = 0.0,
                 noise_condition=False,
                 persistent=True):
@@ -45,9 +46,11 @@ def train_mnist(rbm, optimizer,
     ## run this op to perform training
     tr_op = optimizer.apply_gradients(grads_and_vars)
 
+    ## for sampling images at the end of training
+    sampler_feed = tf.placeholder(dtype=tf.float32, shape=(batch_size, 28**2,1))
+    sampler = rbm.build_sampler(sampler_feed, ksample)
+
     batch=0
-    ## number of batches between samples
-    sample_step = 500
 
     saved_samples = []
     saved_vars = []
@@ -55,6 +58,7 @@ def train_mnist(rbm, optimizer,
     with tf.Session() as sess:
         tf.global_variables_initializer().run()
 
+        #train the model, record weights and internal samples periodically
         while True:
 
             try:
@@ -72,25 +76,6 @@ def train_mnist(rbm, optimizer,
 
             except tf.errors.OutOfRangeError:
                 break
-    return saved_samples, saved_vars
-
-
-
-nv = 28**2
-nh = 100
-rbm = LocalNoiseRBM(nv,nh)
-k=10
-batch_size=64
-epochs=10
-persistent=False
-
-lr = 1e-3
-weight_decay=1e-4
-optimizer = tf.train.GradientDescentOptimizer(learning_rate=lr)
-saved_samples, saved_vars = train_mnist(rbm, optimizer, k=k,
-                            epochs=epochs,
-                            weight_decay=weight_decay,
-                            persistent=False,
-                            noise_condition=False)
-np.save("saved_models/samples_clean_persistent", saved_samples)
-np.save("saved_models/weights_clean_persistent", saved_vars)
+        #record samples with higher 'k' values from trained model
+        final_samples = sess.run(sampler, feed_dict = {sampler_feed:seed_images})
+    return saved_samples, saved_vars, final_samples

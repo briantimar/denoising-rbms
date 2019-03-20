@@ -1,0 +1,1 @@
+{"epochs": 30, "nh": 100, "nv": 784, "ksample": 50, "batch_size": 64, "weight_decay": 0.0001, "lr": 0.001, "persistent": true, "k": 10, "sample_step": 1000}
