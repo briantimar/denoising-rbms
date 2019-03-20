@@ -4,6 +4,17 @@ import numpy as np
 from models import LocalNoiseRBM
 import time
 
+
+def corrupt_tensor(x, p01, p10):
+    """Corrupt a tensor with specified bitflip noise.
+        p01 = prob of 0 --> 1
+        p10 = prob of 1 --> 0
+        """
+    mask_0 = tf.equal(x, 0)
+    mask_1 = tf.equal(x, 1)
+
+
+
 def train_mnist(rbm, optimizer,
                 k=1,ksample=50,
                 shuffle=1024,
