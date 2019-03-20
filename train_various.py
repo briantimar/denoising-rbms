@@ -12,9 +12,9 @@ epochs=30
 
 persistent=False
 noise_condition=False
-use_self_probs=False
+use_self_probs=True
 k=10
-Nsample=10
+Nsample=32
 ksample=50
 sample_step=1000
 lr = 1e-2
@@ -38,7 +38,7 @@ training_samples, saved_vars, final_samples, sample_seeds, training_seeds,randse
                             use_self_probs=use_self_probs,
                             noise_condition=noise_condition)
 
-savedir = "saved_models/clean_nonpersistent/"
+savedir = "saved_models/clean_nonpersistent_selfprobs/"
 
 np.save(savedir+"training_samples",training_samples)
 np.save(savedir + "final_samples", final_samples)
