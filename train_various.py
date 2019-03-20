@@ -12,11 +12,12 @@ epochs=30
 
 persistent=False
 noise_condition=False
-use_self_probs=True
+use_self_probs=False
 k=10
+Nsample=10
 ksample=50
 sample_step=1000
-lr = 1e-3
+lr = 1e-2
 weight_decay=1e-4
 optimizer = tf.train.AdamOptimizer(learning_rate=lr)
 
@@ -26,19 +27,24 @@ config = dict(nv=nv,nh=nh, batch_size=batch_size, epochs=epochs,
                 noise_condition=noise_condition,use_self_probs=use_self_probs
                 )
 
-training_samples, saved_vars, final_samples = train_mnist(rbm, optimizer, k=k,
+training_samples, saved_vars, final_samples, sample_seeds, training_seeds,randseed = train_mnist(
+                            rbm, optimizer, k=k,
                             batch_size=batch_size,
                             ksample=ksample,
+                            Nsample=Nsample,
                             epochs=epochs,
                             weight_decay=weight_decay,
                             persistent=persistent,
                             use_self_probs=use_self_probs,
                             noise_condition=noise_condition)
 
-savedir = "saved_models/clean_nonpersistent_selfprobs/"
+savedir = "saved_models/clean_nonpersistent/"
 
 np.save(savedir+"training_samples",training_samples)
 np.save(savedir + "final_samples", final_samples)
+np.save(savedir + "training_seeds", training_seeds)
+np.save(savedir + "sample_seeds", sample_seeds)
+np.save(savedir + "randseed", randseed)
 np.save(savedir+"variables", saved_vars)
 with open(savedir + "config.json", 'w') as f:
     json.dump(config, f)
