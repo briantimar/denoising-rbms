@@ -213,6 +213,7 @@ class LocalNoiseRBM:
 
         Returns: v:
              visible outputs after k steps of sampling
+             and p(v) -- the visible probs from which v was sampled.
             """
 
         #matmul will expect rank-3 tensors (including batch size)
@@ -223,9 +224,10 @@ class LocalNoiseRBM:
         v_data = visible_feed
         v_self, pv_self, ph_self, ph_data = self.build_gibbs_chain(v_data, k,
                                                         noise_condition=False)
-        return v_self
+        return v_self, pv_self
 
     def estimate_logprob_grads(self, data_feed, k,
+                                    use_self_probs=True,
                                     noise_condition=True,
                                     persistent_state=None):
         """ Build a graph for estimating gradients of log-probabability
@@ -264,19 +266,25 @@ class LocalNoiseRBM:
                                                         noise_condition=False)
         noisy_state = data_feed
 
+        #if desired, replace rbm sampled visible state with its probability
+        #distribution
+        self_visible_state = pv_self if use_self_probs else v_self
+
         #compute the internal gradients
         grads = self.log_probability_gradients(v_data, ph_data,
-                                                v_self, ph_self, noisy_state)
+                                                self_visible_state,
+                                                 ph_self, noisy_state)
         # average over examples in batch
         for key in grads.keys():
             grads[key] = tf.reduce_mean(grads[key], axis=0)
         grads.noise_kernel = tf.squeeze(grads.noise_kernel)
         grads.noise_bias = tf.squeeze(grads.noise_bias)
 
-        #if applicable, return new persistent state
-        return grads, v_self
+
+        return grads, self_visible_state
 
     def nll_gradients(self, data_feed, k,
+                                        use_self_probs=True,
                                             weight_decay = 0.0,
                                             noise_condition=True,
                                           persistent_state=None):
@@ -291,6 +299,7 @@ class LocalNoiseRBM:
             """
 
         logprob_grads, new_persistent_state = self.estimate_logprob_grads(data_feed, k,
+                                            use_self_probs=use_self_probs,
                                             noise_condition=noise_condition,
                                             persistent_state=persistent_state)
 
