@@ -154,7 +154,7 @@ class LocalNoiseRBM:
                                                     noise_condition=noise_setting)
                     v = tfp.distributions.Bernoulli(probs=pv,dtype=self.dtype).sample()
                     ph = self.compute_hidden_probs(v, weights, hidden_bias)
-            return v, ph, ph0
+            return v, pv, ph, ph0
 
     def free_energy_gradients(self, v, ph):
         """ Compute gradients of the free energy with respect to internal variables.
@@ -221,7 +221,7 @@ class LocalNoiseRBM:
 
         # obtain visible states by Gibbs sampling
         v_data = visible_feed
-        v_self, ph_self, ph_data = self.build_gibbs_chain(v_data, k,
+        v_self, pv_self, ph_self, ph_data = self.build_gibbs_chain(v_data, k,
                                                         noise_condition=False)
         return v_self
 
@@ -251,16 +251,16 @@ class LocalNoiseRBM:
         #if conditioning on noise layer, need to run sampling to infer visible
         # states
         if noise_condition:
-            v_data, ph_data, __ = self.build_gibbs_chain(data_feed, k,
+            v_data, pv_data, ph_data, __ = self.build_gibbs_chain(data_feed, k,
                                                 noise_condition=True)
-            v_self, ph_self, __ = self.build_gibbs_chain(self_seed, k,
+            v_self, pv_self, ph_self, __ = self.build_gibbs_chain(self_seed, k,
                                                 noise_condition=False)
         ### otherwise, visible states are driven directly from data
         else:
             v_data = data_feed
             ## make sure to get the hidden probs conditioned on the data
             ph_data = self.compute_hidden_probs(v_data, self.weights, self.hidden_bias)
-            v_self, ph_self, __ = self.build_gibbs_chain(self_seed, k,
+            v_self, pv_self, ph_self, __ = self.build_gibbs_chain(self_seed, k,
                                                         noise_condition=False)
         noisy_state = data_feed
 
