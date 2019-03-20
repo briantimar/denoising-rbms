@@ -133,7 +133,7 @@ class LocalNoiseRBM:
             """
 
 
-        ### I'm repeating myself, there's a better way to do this...
+        
         batch_size = tf.shape(visible_init)[0]
 
         weights = expand_and_tile(self.weights, batch_size)

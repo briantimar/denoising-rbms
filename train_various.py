@@ -10,8 +10,9 @@ rbm = LocalNoiseRBM(nv,nh)
 batch_size=64
 epochs=30
 
-persistent=True
+persistent=False
 noise_condition=False
+use_self_probs=False
 k=10
 ksample=50
 sample_step=1000
@@ -22,13 +23,16 @@ optimizer = tf.train.AdamOptimizer(learning_rate=lr)
 config = dict(nv=nv,nh=nh, batch_size=batch_size, epochs=epochs,
                 persistent=persistent,k=k,ksample=ksample,
                 sample_step=sample_step,lr=lr,weight_decay=weight_decay,
+                noise_condition=noise_condition,use_self_probs=use_self_probs
                 )
 
 training_samples, saved_vars, final_samples = train_mnist(rbm, optimizer, k=k,
+                            batch_size=batch_size,
                             ksample=ksample,
                             epochs=epochs,
                             weight_decay=weight_decay,
                             persistent=persistent,
+                            use_self_probs=use_self_probs,
                             noise_condition=noise_condition)
 
 savedir = "saved_models/clean_persistent/"
