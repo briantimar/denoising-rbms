@@ -1,0 +1,1 @@
+{"k": 10, "lr": 0.01, "batch_size": 64, "ksample": 50, "nv": 50, "sample_step": 1000, "nh": 25, "persistent": false, "use_self_probs": false, "weight_decay": 0.0001, "noise_condition": false, "epochs": 30}
