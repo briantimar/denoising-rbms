@@ -49,15 +49,3 @@ def update_ising(v, beta):
     newstate = accepted_flips * flippedstate + (1- accepted_flips) * v
 
     return newstate
-
-
-
-def build_1d_ising_sampler(L, beta, Nstep, Nchain):
-    """ Sampling routine for 1d classical ising hamiltonian
-    H = - sum(si * si+1)
-    """
-
-    #initial spin configuration
-    v = tfp.distributions.Bernoulli(probs=.5 * tf.ones((Nchain, L))).sample()
-
-    #run Nstep
