@@ -10,9 +10,9 @@ rbm = LocalNoiseRBM(nv,nh)
 batch_size=64
 epochs=30
 
-persistent=True
-noise_condition=False
-use_self_probs=True
+persistent=False
+noise_condition=True
+use_self_probs=False
 k=10
 Nsample=32
 ksample=50
@@ -38,7 +38,7 @@ training_samples, saved_vars, final_samples, sample_seeds, training_seeds,randse
                             use_self_probs=use_self_probs,
                             noise_condition=noise_condition)
 
-savedir = "saved_models/clean_persistent_selfprobs/"
+savedir = "saved_models/clean_noise_conditioned/"
 
 np.save(savedir+"training_samples",training_samples)
 np.save(savedir + "final_samples", final_samples)

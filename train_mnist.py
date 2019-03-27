@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_datasets as tfds
+import tensorflow_probability as tfp
 import numpy as np
 from models import LocalNoiseRBM
 import time
@@ -10,8 +11,12 @@ def corrupt_tensor(x, p01, p10):
         p01 = prob of 0 --> 1
         p10 = prob of 1 --> 0
         """
-    mask_0 = tf.equal(x, 0)
-    mask_1 = tf.equal(x, 1)
+    mask_0 = tf.cast(tf.equal(x, 0), x.dtype)
+    mask_1 = tf.cast(tf.equal(x, 1), x.dtype)
+    flip_01 = tfp.distributions.Bernoulli(probs= p01 * tf.ones(tf.shape(x))).sample()
+    flip_10 = tfp.distributions.Bernoulli(probs= p10 * tf.ones(tf.shape(x))).sample()
+
+    return mask_0
 
 
 
